@@ -1,0 +1,54 @@
+name: Build and deploy site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {} # позволяет запустить вручную из вкладки Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Один сайт на всех — меню и разделение по кафе теперь целиком в базе
+      # данных (см. PROMPT-FOR-AI.md и scripts/push-menu.mjs), а не в сборке.
+      # BASE_PATH подставляется автоматически из имени репозитория — так
+      # GitHub Pages раздаёт "project pages" (username.github.io/repo/...).
+      - name: Build site
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

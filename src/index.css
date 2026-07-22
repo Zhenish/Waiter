@@ -1,0 +1,16 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
+body {
+  background: #1b1918;
+}
