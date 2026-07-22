@@ -41,6 +41,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_OWNER_PASSWORD: ${{ secrets.VITE_OWNER_PASSWORD }}
           BASE_PATH: /${{ github.event.repository.name }}/
         run: npm run build
 

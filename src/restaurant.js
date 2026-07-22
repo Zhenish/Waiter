@@ -21,32 +21,38 @@ export function setCachedRestaurantId(id) {
   }
 }
 
+const DISABLED_MESSAGE =
+  "Это кафе временно отключено. Обратитесь к владельцу сервиса.";
+
 // Достаёт кафе и его меню по PIN-коду (вводит официант при первом входе)
 export async function fetchRestaurantByPin(pin) {
   if (!supabase) return { error: "Сайт не настроен (нет подключения к базе)." };
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, name, menu")
+    .select("id, name, menu, status")
     .eq("pin", pin.trim())
     .maybeSingle();
 
   if (error) return { error: error.message };
   if (!data) return { error: "Неверный PIN-код. Проверьте и попробуйте снова." };
+  if (data.status === "disabled") return { error: DISABLED_MESSAGE };
   return { restaurant: data };
 }
 
 // Достаёт кафе и его АКТУАЛЬНОЕ меню по сохранённому id (обычный вход,
 // когда PIN уже вводили раньше на этом устройстве). Меню всегда берётся
-// свежее из базы — так его можно обновлять без переустановки сайта.
+// свежее из базы — так его можно обновлять без переустановки сайта, а если
+// владелец отключил кафе — вход тоже сразу заблокируется.
 export async function fetchRestaurantById(id) {
   if (!supabase) return { error: "Сайт не настроен (нет подключения к базе)." };
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, name, menu")
+    .select("id, name, menu, status")
     .eq("id", id)
     .maybeSingle();
 
   if (error) return { error: error.message };
   if (!data) return { error: "Это кафе больше не найдено в базе." };
+  if (data.status === "disabled") return { error: DISABLED_MESSAGE };
   return { restaurant: data };
 }

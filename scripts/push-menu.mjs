@@ -146,7 +146,7 @@ for (const file of files) {
     existingPins.add(pin);
     const { error } = await supabase
       .from("restaurants")
-      .insert([{ id, name, pin, menu }]);
+      .insert([{ id, name, pin, status: "active", menu }]);
     if (error) {
       skipped.push(`${file} — ошибка создания в базе: ${error.message}`);
       continue;
