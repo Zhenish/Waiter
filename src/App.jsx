@@ -18,8 +18,8 @@ const POLL_INTERVAL = 5000; // мс — как часто подтягивать
 const HISTORY_RETENTION_DAYS = 14; // сколько дней хранить выполненные заказы в истории
 
 // Карточка всегда одной высоты — это то, что делает расчет страниц предсказуемым
-const CARD_H = 132; // px, высота карточки блюда
-const MIN_CARD_W = 148; // px, минимальная ширина карточки
+const CARD_H = 144; // px, высота карточки блюда — крупнее, удобнее попадать пальцем в +/-
+const MIN_CARD_W = 156; // px, минимальная ширина карточки
 const GRID_GAP = 10; // px, зазор между карточками
 
 function OrderScreen({
@@ -336,7 +336,7 @@ function OrderScreen({
                 onClick={() => changeTable(-1)}
                 aria-label="Предыдущий стол"
               >
-                <Minus size={14} strokeWidth={3} />
+                <Minus size={16} strokeWidth={3} />
               </button>
               <span
                 style={{
@@ -351,7 +351,7 @@ function OrderScreen({
                 onClick={() => changeTable(1)}
                 aria-label="Следующий стол"
               >
-                <Plus size={14} strokeWidth={3} />
+                <Plus size={16} strokeWidth={3} />
               </button>
             </div>
             <button
@@ -399,7 +399,7 @@ function OrderScreen({
                 }}
                 onClick={() => switchCategory(cat.id)}
               >
-                <Icon size={18} strokeWidth={2.2} />
+                <Icon size={19} strokeWidth={2.2} />
                 {cat.name}
               </button>
             );
@@ -465,7 +465,7 @@ function OrderScreen({
                       disabled={n === 0}
                       aria-label={`Убрать ${item.name}`}
                     >
-                      <Minus size={16} strokeWidth={3} />
+                      <Minus size={18} strokeWidth={3} />
                     </button>
                     <span style={styles.stepNum}>{n}</span>
                     <button
@@ -473,7 +473,7 @@ function OrderScreen({
                       onClick={() => changeQty(item.id, 1)}
                       aria-label={`Добавить ${item.name}`}
                     >
-                      <Plus size={16} strokeWidth={3} />
+                      <Plus size={18} strokeWidth={3} />
                     </button>
                   </div>
                 )}
@@ -1395,9 +1395,9 @@ const styles = {
   },
   historyBtn: {
     position: "relative",
-    width: 30,
-    height: 30,
-    borderRadius: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 9,
     border: "1px solid #3a3532",
     background: PANEL,
     color: "#c9c4bf",
@@ -1589,9 +1589,9 @@ const styles = {
     marginRight: 2,
   },
   tableBtn: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     border: "1px solid #3a3532",
     background: PANEL,
     color: PAPER,
@@ -1601,10 +1601,10 @@ const styles = {
     cursor: "pointer",
   },
   tableNum: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: 700,
     color: GOLD,
-    minWidth: 30,
+    minWidth: 34,
     textAlign: "center",
     fontVariantNumeric: "tabular-nums",
   },
@@ -1624,14 +1624,14 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 7,
-    padding: "11px 0",
-    borderRadius: 10,
+    gap: 8,
+    padding: "13px 0",
+    borderRadius: 12,
     border: "1px solid #3a3532",
     background: "transparent",
     color: "#9a938d",
-    fontSize: 14.5,
-    fontWeight: 600,
+    fontSize: 15,
+    fontWeight: 700,
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
@@ -1731,9 +1731,9 @@ const styles = {
     textOverflow: "ellipsis",
   },
   cardPrice: {
-    fontSize: 13,
+    fontSize: 14.5,
     color: GOLD,
-    fontWeight: 600,
+    fontWeight: 700,
   },
   stepper: {
     display: "flex",
@@ -1744,9 +1744,9 @@ const styles = {
     padding: "4px 6px",
   },
   stepBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 7,
+    width: 34,
+    height: 34,
+    borderRadius: 8,
     border: "none",
     background: "#33302d",
     color: PAPER,
@@ -1756,9 +1756,9 @@ const styles = {
     cursor: "pointer",
   },
   stepNum: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 700,
-    minWidth: 20,
+    minWidth: 22,
     textAlign: "center",
     fontVariantNumeric: "tabular-nums",
   },
@@ -1804,33 +1804,34 @@ const styles = {
     flexShrink: 0,
     background: PANEL,
     borderTop: "1px solid #3a3532",
-    padding: "12px 16px",
+    padding: "14px 16px",
     display: "flex",
     alignItems: "center",
     gap: 12,
+    boxShadow: "0 -4px 12px rgba(0,0,0,0.18)",
   },
   footerInfo: {
     display: "flex",
     flexDirection: "column",
-    minWidth: 78,
+    minWidth: 82,
   },
   footerCount: {
     fontSize: 12,
     color: "#9a938d",
   },
   footerSum: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: 700,
     color: GOLD,
   },
   confirmBtn: {
     flex: 1,
-    padding: "14px 0",
-    borderRadius: 10,
+    padding: "16px 0",
+    borderRadius: 12,
     border: "none",
     background: WINE,
     color: PAPER,
-    fontSize: 15.5,
+    fontSize: 16.5,
     fontWeight: 700,
     cursor: "pointer",
   },
