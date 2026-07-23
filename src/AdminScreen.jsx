@@ -376,7 +376,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                       Стол №{entry.table} · {entry.waiter}
                     </span>
                     <span style={styles.orderMeta}>
-                      {formatDate(entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} ₽
+                      {formatDate(entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} сом
                     </span>
                   </button>
                   <button style={styles.eyeBtn} onClick={() => setViewingOrder(entry)} aria-label="Состав заказа">
@@ -401,7 +401,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                       Стол №{entry.table} · {entry.waiter}
                     </span>
                     <span style={styles.orderMeta}>
-                      {formatDate(entry.completedDate || entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} ₽
+                      {formatDate(entry.completedDate || entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} сом
                     </span>
                   </button>
                   <button style={styles.eyeBtn} onClick={() => setViewingOrder(entry)} aria-label="Состав заказа">
@@ -447,11 +447,11 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                 <div style={styles.statLabel}>заказов сегодня</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statValue}>{money(stats.todayRevenue)} ₽</div>
+                <div style={styles.statValue}>{money(stats.todayRevenue)} сом</div>
                 <div style={styles.statLabel}>выручка сегодня</div>
               </div>
               <div style={styles.statCard}>
-                <div style={styles.statValue}>{money(stats.avgCheck)} ₽</div>
+                <div style={styles.statValue}>{money(stats.avgCheck)} сом</div>
                 <div style={styles.statLabel}>средний чек</div>
               </div>
               <div style={styles.statCard}>
@@ -484,7 +484,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                   <div key={w.waiter} style={styles.statRow}>
                     <span style={styles.statRowName}>{w.waiter}</span>
                     <span style={styles.statRowValue}>
-                      {w.count} зак. · {money(w.revenue)} ₽
+                      {w.count} зак. · {money(w.revenue)} сом
                     </span>
                   </div>
                 ))}
@@ -520,7 +520,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                       <div style={styles.stopRowInfo}>
                         <CatIcon size={14} strokeWidth={2.2} color="#8a8480" />
                         <span style={styles.stopRowName}>{item.name}</span>
-                        <span style={styles.stopRowPrice}>{money(item.price)} ₽</span>
+                        <span style={styles.stopRowPrice}>{money(item.price)} сом</span>
                       </div>
                       <button
                         style={{ ...styles.stopToggleBtn, ...(item.stopped ? styles.stopToggleBtnActive : {}) }}
@@ -621,7 +621,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                             {item.name}
                             {item.stopped && <span style={styles.stopBadge}>СТОП</span>}
                           </div>
-                          <div style={styles.cardPrice}>{money(item.price)} ₽</div>
+                          <div style={styles.cardPrice}>{money(item.price)} сом</div>
                           <div style={styles.cardActions}>
                             {confirmDeleteId === item.id ? (
                               <>
@@ -676,12 +676,12 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
                   <span>
                     {i.n}× {i.name}
                   </span>
-                  <span style={styles.statRowValue}>{money(i.price * i.n)} ₽</span>
+                  <span style={styles.statRowValue}>{money(i.price * i.n)} сом</span>
                 </div>
               ))}
               <div style={{ ...styles.statRow, fontWeight: 700, marginTop: 8 }}>
                 <span>Итого</span>
-                <span>{money(viewingOrder.total)} ₽</span>
+                <span>{money(viewingOrder.total)} сом</span>
               </div>
             </div>
           </div>
@@ -728,14 +728,14 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
               <div style={styles.priceInputWrap}>
                 <input
                   style={styles.priceInput}
-                  type="number"
+                  type="text"
                   inputMode="decimal"
                   value={itemModal.price}
                   placeholder="0"
-                  onChange={(e) => setItemModal((m) => ({ ...m, price: e.target.value }))}
+                  onChange={(e) => setItemModal((m) => ({ ...m, price: e.target.value.replace(/[^0-9]/g, "") }))}
                   onKeyDown={(e) => e.key === "Enter" && submitItemModal()}
                 />
-                <span style={styles.priceSuffix}>₽</span>
+                <span style={styles.priceSuffix}>сом</span>
               </div>
 
               <label style={styles.fieldLabel}>Рубрика</label>
@@ -1249,7 +1249,7 @@ const styles = {
     borderStyle: "solid",
     borderColor: "#3a3532",
     borderRadius: 10,
-    padding: "12px 34px 12px 14px",
+    padding: "12px 52px 12px 14px",
     color: PAPER,
     fontSize: 16,
   },

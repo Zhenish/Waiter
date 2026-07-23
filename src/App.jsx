@@ -442,7 +442,7 @@ function OrderScreen({
                   {comments[item.id] && (
                     <div style={styles.cardComment}>{comments[item.id]}</div>
                   )}
-                  <div style={styles.cardPrice}>{money(item.price)} ₽</div>
+                  <div style={styles.cardPrice}>{money(item.price)} сом</div>
                 </div>
                 {stopped ? (
                   <div style={styles.stoppedBadge}>Стоп-лист</div>
@@ -522,7 +522,7 @@ function OrderScreen({
       <div style={styles.footer}>
         <div style={styles.footerInfo}>
           <span style={styles.footerCount}>{totalCount} поз.</span>
-          <span style={styles.footerSum}>{money(totalSum)} ₽</span>
+          <span style={styles.footerSum}>{money(totalSum)} сом</span>
         </div>
         <button
           style={{
@@ -642,7 +642,7 @@ function OrderScreen({
                         </span>
                         <span style={styles.historyMeta}>
                           {formatDate(entry.date)} · {entry.itemsCount} поз. ·{" "}
-                          {money(entry.total)} ₽
+                          {money(entry.total)} сом
                         </span>
                       </button>
                       <button
@@ -687,7 +687,7 @@ function OrderScreen({
                       </span>
                       <span style={styles.historyMeta}>
                         {formatDate(entry.completedDate || entry.date)} ·{" "}
-                        {entry.itemsCount} поз. · {money(entry.total)} ₽
+                        {entry.itemsCount} поз. · {money(entry.total)} сом
                       </span>
                       {entry.waiter && (
                         <span style={styles.historyWaiter}>
@@ -725,7 +725,7 @@ function OrderScreen({
             </div>
             <div style={styles.confirmText}>
               {confirmingCancel.itemsCount} поз. на{" "}
-              {money(confirmingCancel.total)} ₽ будут удалены без выполнения.
+              {money(confirmingCancel.total)} сом будут удалены без выполнения.
               Это действие нельзя отменить.
             </div>
             <div style={styles.confirmActions}>
@@ -778,7 +778,7 @@ function OrderScreen({
                     <span style={styles.modalRowQty}>{i.n}×</span>
                     <span style={styles.modalRowName}>{i.name}</span>
                     <span style={styles.modalRowPrice}>
-                      {money(i.price * i.n)} ₽
+                      {money(i.price * i.n)} сом
                     </span>
                   </div>
                   {i.comment && (
@@ -789,7 +789,7 @@ function OrderScreen({
             </div>
             <div style={styles.modalTotal}>
               <span>Итого</span>
-              <span>{money(viewingOrder.total)} ₽</span>
+              <span>{money(viewingOrder.total)} сом</span>
             </div>
           </div>
         </div>
@@ -823,7 +823,7 @@ function OrderScreen({
                         <span style={styles.modalRowQty}>{i.n}×</span>
                         <span style={styles.modalRowName}>{i.name}</span>
                         <span style={styles.modalRowPrice}>
-                          {money(i.price * i.n)} ₽
+                          {money(i.price * i.n)} сом
                         </span>
                       </div>
                       {comments[i.id] && (
@@ -836,7 +836,7 @@ function OrderScreen({
                 </div>
                 <div style={styles.modalTotal}>
                   <span>Итого</span>
-                  <span>{money(totalSum)} ₽</span>
+                  <span>{money(totalSum)} сом</span>
                 </div>
                 <button
                   style={styles.sendBtn}

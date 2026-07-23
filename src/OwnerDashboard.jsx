@@ -576,9 +576,10 @@ function CafeEditor({ cafe, error, existingPins = [], onChange, onCancel, onSave
               />
               <input
                 style={styles.itemPriceInput}
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={item.price}
-                onChange={(e) => updateItem(idx, { price: Number(e.target.value) })}
+                onChange={(e) => updateItem(idx, { price: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
               />
               <select
                 style={styles.itemCatSelect}

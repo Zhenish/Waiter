@@ -209,9 +209,10 @@ export default function MenuEditor({ restaurantId, initialMenu, onClose, onSaved
               />
               <input
                 style={styles.itemPriceInput}
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={item.price}
-                onChange={(e) => updateItem(idx, { price: Number(e.target.value) })}
+                onChange={(e) => updateItem(idx, { price: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
               />
               <select
                 style={styles.itemCatSelect}
