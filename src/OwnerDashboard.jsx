@@ -23,14 +23,14 @@ import { ICON_OPTIONS, iconByKey } from "./menuIcons";
 
 const money = (n) => (n || 0).toLocaleString("ru-RU");
 
-// 6 символов, буквы + цифры (без похожих друг на друга O/0, I/1/L) — сложнее
+// 5 символов, буквы + цифры (без похожих друг на друга O/0, I/1/L) — сложнее
 // подобрать случайно, чем старый 5-значный числовой PIN, и всё ещё легко
 // продиктовать/переписать официанту.
 const PIN_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const generatePin = (existing) => {
   let pin;
   do {
-    pin = Array.from({ length: 6 }, () => PIN_CHARS[Math.floor(Math.random() * PIN_CHARS.length)]).join("");
+    pin = Array.from({ length: 5 }, () => PIN_CHARS[Math.floor(Math.random() * PIN_CHARS.length)]).join("");
   } while (existing.includes(pin));
   return pin;
 };

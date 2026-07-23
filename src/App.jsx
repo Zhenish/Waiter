@@ -988,8 +988,8 @@ function PinScreen({ onResolved }) {
           style={wrapperStyles.pinInput}
           type="text"
           autoFocus
-          maxLength={6}
-          placeholder="••••••"
+          maxLength={5}
+          placeholder="•••••"
           value={pin}
           onChange={(e) => setPin(e.target.value.replace(/\s/g, "").toUpperCase())}
           onKeyDown={(e) => e.key === "Enter" && submit()}

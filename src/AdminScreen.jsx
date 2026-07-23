@@ -551,8 +551,8 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
               <input
                 style={styles.menuPinInput}
                 type="text"
-                maxLength={6}
-                placeholder="••••••"
+                maxLength={5}
+                placeholder="•••••"
                 value={menuPin}
                 onChange={(e) => {
                   setMenuPin(e.target.value.replace(/\s/g, "").toUpperCase());
