@@ -301,47 +301,31 @@ export default function OwnerDashboard({ onLock }) {
               </div>
               <div style={styles.cafeActions}>
                 <button
-                  style={styles.actionBtn}
+                  style={styles.actionMain}
                   onClick={() => {
                     setEditing({ ...r, isNew: false });
                     setSaveError(null);
                   }}
                 >
                   <Pencil size={14} strokeWidth={2.2} />
-                  Редактировать меню
+                  Меню
                 </button>
-                <button style={styles.actionBtn} onClick={() => copyLink(r)}>
-                  {copiedLinkId === r.id ? (
-                    <>
-                      <Check size={14} strokeWidth={2.2} />
-                      Ссылка скопирована
-                    </>
-                  ) : (
-                    <>
-                      <LinkIcon size={14} strokeWidth={2.2} />
-                      Ссылка для входа
-                    </>
-                  )}
-                </button>
-                <button style={styles.actionBtn} onClick={() => toggleStatus(r.id)}>
-                  {r.status === "active" ? (
-                    <>
-                      <PowerOff size={14} strokeWidth={2.2} />
-                      Отключить
-                    </>
-                  ) : (
-                    <>
-                      <Power size={14} strokeWidth={2.2} />
-                      Включить
-                    </>
-                  )}
+                <button style={styles.actionIcon} onClick={() => copyLink(r)} aria-label="Ссылка для входа">
+                  {copiedLinkId === r.id ? <Check size={15} strokeWidth={2.2} /> : <LinkIcon size={15} strokeWidth={2.2} />}
                 </button>
                 <button
-                  style={{ ...styles.actionBtn, color: "#e07a72" }}
-                  onClick={() => setConfirmDelete(r)}
+                  style={{ ...styles.actionIcon, ...(r.status === "active" ? {} : { borderColor: "#7fbf8f", color: "#7fbf8f" }) }}
+                  onClick={() => toggleStatus(r.id)}
+                  aria-label={r.status === "active" ? "Отключить" : "Включить"}
                 >
-                  <Trash2 size={14} strokeWidth={2.2} />
-                  Удалить
+                  {r.status === "active" ? <PowerOff size={15} strokeWidth={2.2} /> : <Power size={15} strokeWidth={2.2} />}
+                </button>
+                <button
+                  style={{ ...styles.actionIcon, color: "#e07a72" }}
+                  onClick={() => setConfirmDelete(r)}
+                  aria-label="Удалить"
+                >
+                  <Trash2 size={15} strokeWidth={2.2} />
                 </button>
               </div>
             </div>
@@ -548,27 +532,31 @@ function CafeEditor({ cafe, error, existingPins = [], onChange, onCancel, onSave
             const Icon = iconByKey(cat.icon);
             return (
               <div key={idx} style={styles.catRow}>
-                <Icon size={16} strokeWidth={2.2} color="#8a8480" />
-                <input
-                  style={styles.catNameInput}
-                  value={cat.name}
-                  placeholder="Например: Кухня"
-                  onChange={(e) => updateCategory(idx, { name: e.target.value })}
-                />
-                <select
-                  style={styles.catIconSelect}
-                  value={cat.icon}
-                  onChange={(e) => updateCategory(idx, { icon: e.target.value })}
-                >
+                <div style={styles.catRowTop}>
+                  <input
+                    style={styles.catNameInput}
+                    value={cat.name}
+                    placeholder="Например: Кухня"
+                    onChange={(e) => updateCategory(idx, { name: e.target.value })}
+                  />
+                  <button style={styles.rowDeleteBtn} onClick={() => removeCategory(idx)} aria-label="Удалить рубрику">
+                    <Trash2 size={14} strokeWidth={2.2} />
+                  </button>
+                </div>
+                <div style={styles.iconPickerLabel}>Иконка рубрики</div>
+                <div style={styles.iconPickerGrid}>
                   {ICON_OPTIONS.map((o) => (
-                    <option key={o.key} value={o.key}>
-                      {o.label}
-                    </option>
+                    <button
+                      key={o.key}
+                      style={{ ...styles.iconPickerBtn, ...(cat.icon === o.key ? styles.iconPickerBtnActive : {}) }}
+                      onClick={() => updateCategory(idx, { icon: o.key })}
+                      aria-label={o.label}
+                      title={o.label}
+                    >
+                      <o.Icon size={17} strokeWidth={2.1} />
+                    </button>
                   ))}
-                </select>
-                <button style={styles.rowDeleteBtn} onClick={() => removeCategory(idx)}>
-                  <Trash2 size={14} strokeWidth={2.2} />
-                </button>
+                </div>
               </div>
             );
           })}
@@ -804,16 +792,29 @@ const styles = {
     display: "flex",
     padding: 2,
   },
-  cafeActions: { display: "flex", gap: 8, flexWrap: "wrap" },
-  actionBtn: {
+  cafeActions: { display: "flex", gap: 7 },
+  actionMain: {
+    flex: 1,
     display: "flex",
     alignItems: "center",
+    justifyContent: "center",
     gap: 5,
     background: "transparent",
     border: "1px solid #3a3532",
     borderRadius: 8,
-    padding: "6px 10px",
+    padding: "9px 0",
     fontSize: 12,
+    color: "#c9c4bf",
+    cursor: "pointer",
+  },
+  actionIcon: {
+    width: 40,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "transparent",
+    border: "1px solid #3a3532",
+    borderRadius: 8,
     color: "#c9c4bf",
     cursor: "pointer",
   },
@@ -920,7 +921,12 @@ const styles = {
     cursor: "pointer",
   },
   sectionTitle: { fontSize: 13, fontWeight: 700, color: PAPER, margin: "18px 0 8px" },
-  catRow: { display: "flex", alignItems: "center", gap: 6, marginBottom: 8 },
+  catRow: { display: "flex", flexDirection: "column", gap: 8, background: "#1B1918", border: "1px solid #3a3532", borderRadius: 10, padding: 10, marginBottom: 8 },
+  catRowTop: { display: "flex", alignItems: "center", gap: 6 },
+  iconPickerLabel: { fontSize: 10.5, color: "#6f6a65" },
+  iconPickerGrid: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 },
+  iconPickerBtn: { aspectRatio: "1 / 1", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 9, border: "1px solid #3a3532", background: "transparent", color: "#c9c4bf", cursor: "pointer" },
+  iconPickerBtnActive: { background: WINE, borderColor: WINE, color: PAPER },
   catNameInput: {
     flex: 1,
     background: "#1B1918",

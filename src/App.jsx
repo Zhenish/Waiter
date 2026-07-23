@@ -18,7 +18,7 @@ const POLL_INTERVAL = 5000; // мс — как часто подтягивать
 const HISTORY_RETENTION_DAYS = 14; // сколько дней хранить выполненные заказы в истории
 
 // Карточка всегда одной высоты — это то, что делает расчет страниц предсказуемым
-const CARD_H = 144; // px, высота карточки блюда — крупнее, удобнее попадать пальцем в +/-
+const CARD_H = 150; // px, высота карточки блюда — крупнее, удобнее попадать пальцем в +/-
 const MIN_CARD_W = 156; // px, минимальная ширина карточки
 const GRID_GAP = 10; // px, зазор между карточками
 
@@ -319,18 +319,31 @@ function OrderScreen({
 
   return (
     <div style={styles.app}>
-      {/* Header */}
+      {/* Header — компактный, один ряд */}
       <div style={styles.header}>
-        <div style={styles.restaurantLabel}>{restaurantName}</div>
         <div style={styles.headerTop}>
           <div style={styles.headerLeft}>
+            <span style={styles.restaurantLabel}>{restaurantName}</span>
+            <div style={styles.waiterBadge}>
+              <User size={12} strokeWidth={2.4} />
+              {waiterName}
+            </div>
+            <button style={styles.switchWaiterBtn} onClick={onSwitchWaiter} aria-label="Сменить официанта">
+              <LogOut size={12} strokeWidth={2.2} />
+            </button>
+          </div>
+          <div style={styles.headerRight}>
+            {ordersError && (
+              <span style={styles.syncWarning} title={ordersError}>
+                <WifiOff size={13} strokeWidth={2.2} />
+              </span>
+            )}
             <div
               style={{
                 ...styles.tableStepper,
                 ...(isTableLocked ? styles.tableStepperLocked : {}),
               }}
             >
-              <span style={styles.tableLabel}>СТОЛ</span>
               <button
                 style={styles.tableBtn}
                 onClick={() => changeTable(-1)}
@@ -365,27 +378,6 @@ function OrderScreen({
               )}
             </button>
           </div>
-          <span style={styles.pageIndicator}>
-            {page + 1} / {pageCount}
-          </span>
-        </div>
-        <div style={styles.waiterRow}>
-          <div style={styles.waiterBadge}>
-            <User size={13} strokeWidth={2.4} />
-            {waiterName}
-          </div>
-          <div style={styles.waiterRowRight}>
-            {ordersError && (
-              <span style={styles.syncWarning} title={ordersError}>
-                <WifiOff size={13} strokeWidth={2.2} />
-                нет связи с базой
-              </span>
-            )}
-            <button style={styles.switchWaiterBtn} onClick={onSwitchWaiter}>
-              <LogOut size={13} strokeWidth={2.2} />
-              Сменить
-            </button>
-          </div>
         </div>
         <div style={styles.tabs}>
           {categories.map((cat) => {
@@ -399,7 +391,7 @@ function OrderScreen({
                 }}
                 onClick={() => switchCategory(cat.id)}
               >
-                <Icon size={19} strokeWidth={2.2} />
+                <Icon size={16} strokeWidth={2.2} />
                 {cat.name}
               </button>
             );
@@ -1306,30 +1298,37 @@ const styles = {
   },
   header: {
     flexShrink: 0,
-    padding: "18px 16px 0",
+    padding: "10px 14px 0",
     borderBottom: `1px solid #35312e`,
   },
   restaurantLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 700,
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    color: "#6f6a65",
-    marginBottom: 8,
+    color: PAPER,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   headerTop: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "baseline",
-    marginBottom: 14,
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 10,
+  },
+  headerRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
   },
   tableStepper: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 8,
-    border: "1px solid transparent",
-    padding: "2px 4px",
+    gap: 4,
+    background: PANEL,
+    borderRadius: 10,
+    border: "1px solid #3a3532",
+    padding: "3px 5px",
   },
   tableStepperLocked: {
     border: "1px solid #b3564f",
@@ -1350,7 +1349,8 @@ const styles = {
   headerLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 7,
+    minWidth: 0,
   },
   waiterRow: {
     display: "flex",
@@ -1361,14 +1361,14 @@ const styles = {
   waiterBadge: {
     display: "flex",
     alignItems: "center",
-    gap: 5,
-    fontSize: 12,
+    gap: 4,
+    fontSize: 11.5,
     fontWeight: 600,
     color: "#c9c4bf",
     background: PANEL,
     border: "1px solid #3a3532",
     borderRadius: 20,
-    padding: "4px 10px",
+    padding: "3px 8px",
   },
   waiterRowRight: {
     display: "flex",
@@ -1385,18 +1385,16 @@ const styles = {
   switchWaiterBtn: {
     display: "flex",
     alignItems: "center",
-    gap: 4,
-    fontSize: 12,
     color: "#8a8480",
     background: "none",
     border: "none",
     cursor: "pointer",
-    padding: "4px 2px",
+    padding: 2,
   },
   historyBtn: {
     position: "relative",
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: 9,
     border: "1px solid #3a3532",
     background: PANEL,
@@ -1589,11 +1587,11 @@ const styles = {
     marginRight: 2,
   },
   tableBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    border: "1px solid #3a3532",
-    background: PANEL,
+    width: 30,
+    height: 30,
+    borderRadius: 7,
+    border: "none",
+    background: "#33302d",
     color: PAPER,
     display: "flex",
     alignItems: "center",
@@ -1601,10 +1599,10 @@ const styles = {
     cursor: "pointer",
   },
   tableNum: {
-    fontSize: 17,
+    fontSize: 14,
     fontWeight: 700,
     color: GOLD,
-    minWidth: 34,
+    minWidth: 28,
     textAlign: "center",
     fontVariantNumeric: "tabular-nums",
   },
@@ -1615,22 +1613,21 @@ const styles = {
   },
   tabs: {
     display: "flex",
-    flexWrap: "wrap",
-    gap: 8,
-    paddingBottom: 12,
+    gap: 6,
+    paddingBottom: 10,
   },
   tab: {
-    flex: "1 1 calc(50% - 4px)",
+    flex: 1,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    padding: "13px 0",
-    borderRadius: 12,
+    gap: 5,
+    padding: "10px 0",
+    borderRadius: 10,
     border: "1px solid #3a3532",
     background: "transparent",
     color: "#9a938d",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 700,
     cursor: "pointer",
     whiteSpace: "nowrap",
@@ -1744,9 +1741,9 @@ const styles = {
     padding: "4px 6px",
   },
   stepBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
     border: "none",
     background: "#33302d",
     color: PAPER,
