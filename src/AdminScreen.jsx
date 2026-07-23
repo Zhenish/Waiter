@@ -558,28 +558,33 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
               <div style={styles.rubricRow}>
                 {categories.map((cat) => {
                   const Icon = iconByKey(cat.icon);
+                  const active = menuCategory === cat.id;
                   return (
                     <div key={cat.id} style={styles.rubricChipWrap}>
                       <button
-                        style={{ ...styles.rubricChip, ...(menuCategory === cat.id ? styles.adminTabActive : {}) }}
+                        style={{ ...styles.rubricChip, ...(active ? styles.rubricChipActive : {}) }}
                         onClick={() => setMenuCategory(cat.id)}
                       >
-                        <Icon size={14} strokeWidth={2.2} />
+                        <Icon size={15} strokeWidth={2.2} />
                         {cat.name || cat.id}
-                        <span style={styles.rubricCount}>{itemCountByCategory.get(cat.id) || 0}</span>
+                        <span style={{ ...styles.rubricCount, ...(active ? styles.rubricCountActive : {}) }}>
+                          {itemCountByCategory.get(cat.id) || 0}
+                        </span>
                       </button>
-                      <button
-                        style={styles.rubricEditBtn}
-                        onClick={() => startEditCategory(cat)}
-                        aria-label={`Редактировать рубрику ${cat.name}`}
-                      >
-                        <Pencil size={12} strokeWidth={2.2} />
-                      </button>
+                      {active && (
+                        <button
+                          style={styles.rubricEditBtn}
+                          onClick={() => startEditCategory(cat)}
+                          aria-label={`Редактировать рубрику ${cat.name}`}
+                        >
+                          <Pencil size={13} strokeWidth={2.2} />
+                        </button>
+                      )}
                     </div>
                   );
                 })}
                 <button style={styles.rubricAddChip} onClick={openAddCategory}>
-                  <Plus size={14} strokeWidth={2.4} />
+                  <Plus size={15} strokeWidth={2.4} />
                   Рубрика
                 </button>
               </div>
@@ -724,14 +729,15 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
               <div style={styles.categoryPicker}>
                 {categories.map((cat) => {
                   const Icon = iconByKey(cat.icon);
+                  const active = itemModal.category === cat.id;
                   return (
                     <button
                       key={cat.id}
-                      style={{ ...styles.categoryPill, ...(itemModal.category === cat.id ? styles.categoryPillActive : {}) }}
+                      style={{ ...styles.categoryCard, ...(active ? styles.categoryCardActive : {}) }}
                       onClick={() => setItemModal((m) => ({ ...m, category: cat.id }))}
                     >
-                      <Icon size={15} strokeWidth={2.2} />
-                      {cat.name || cat.id}
+                      <Icon size={18} strokeWidth={2.2} />
+                      <span style={styles.categoryCardLabel}>{cat.name || cat.id}</span>
                     </button>
                   );
                 })}
@@ -1035,59 +1041,59 @@ const styles = {
     marginBottom: 14,
   },
   sectionTitle: { fontSize: 13, fontWeight: 700, color: PAPER, margin: "0 0 8px" },
-  rubricRow: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  rubricChipWrap: { display: "flex", alignItems: "center", gap: 3 },
+  rubricRow: { display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 14 },
+  rubricChipWrap: { display: "flex", alignItems: "center", gap: 5 },
   rubricChip: {
     display: "flex",
     alignItems: "center",
-    gap: 6,
-    padding: "7px 10px 7px 12px",
-    borderRadius: "20px 0 0 20px",
+    gap: 7,
+    padding: "8px 13px",
+    borderRadius: 20,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: "#3a3532",
-    borderRightWidth: 0,
     background: "transparent",
     color: "#c9c4bf",
-    fontSize: 13,
+    fontSize: 13.5,
+    fontWeight: 600,
     cursor: "pointer",
     whiteSpace: "nowrap",
   },
+  rubricChipActive: { background: WINE, borderColor: WINE, color: PAPER },
   rubricCount: {
     fontSize: 10.5,
     fontWeight: 700,
     color: "#8a8480",
-    background: "rgba(255,255,255,0.06)",
+    background: "rgba(255,255,255,0.08)",
     borderRadius: 10,
     padding: "1px 6px",
   },
+  rubricCountActive: { color: PAPER, background: "rgba(0,0,0,0.18)" },
   rubricEditBtn: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     width: 30,
     height: 30,
-    borderRadius: "0 20px 20px 0",
-    borderWidth: 1,
-    borderStyle: "solid",
-    borderColor: "#3a3532",
-    background: "transparent",
-    color: "#8a8480",
-    cursor: "pointer",
     flexShrink: 0,
+    borderRadius: "50%",
+    border: "none",
+    background: PANEL,
+    color: GOLD,
+    cursor: "pointer",
   },
   rubricAddChip: {
     display: "flex",
     alignItems: "center",
     gap: 6,
-    padding: "7px 12px",
+    padding: "8px 13px",
     borderRadius: 20,
     borderWidth: 1,
     borderStyle: "dashed",
-    borderColor: "#3a3532",
+    borderColor: "#5a5450",
     background: "transparent",
     color: "#9a938d",
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: 600,
     cursor: "pointer",
     whiteSpace: "nowrap",
@@ -1242,24 +1248,31 @@ const styles = {
     fontSize: 14,
     pointerEvents: "none",
   },
-  categoryPicker: { display: "flex", flexWrap: "wrap", gap: 8 },
-  categoryPill: {
+  categoryPicker: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 },
+  categoryCard: {
     display: "flex",
+    flexDirection: "column",
     alignItems: "center",
     gap: 6,
-    padding: "9px 14px",
-    borderRadius: 20,
+    padding: "12px 6px",
+    borderRadius: 12,
     borderWidth: 1,
     borderStyle: "solid",
     borderColor: "#3a3532",
     background: "transparent",
     color: "#c9c4bf",
-    fontSize: 13.5,
-    fontWeight: 600,
     cursor: "pointer",
-    whiteSpace: "nowrap",
   },
-  categoryPillActive: { background: WINE, borderColor: WINE, color: PAPER },
+  categoryCardActive: { background: WINE, borderColor: WINE, color: PAPER },
+  categoryCardLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: "center",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: "100%",
+  },
   saveError: {
     marginTop: 14,
     color: "#e07a72",
