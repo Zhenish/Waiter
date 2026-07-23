@@ -24,13 +24,15 @@ export function setCachedRestaurantId(id) {
 const DISABLED_MESSAGE =
   "Это кафе временно отключено. Обратитесь к владельцу сервиса.";
 
-// Достаёт кафе и его меню по PIN-коду (вводит официант при первом входе)
+// Достаёт кафе и его меню по PIN-коду (вводит официант при первом входе).
+// PIN сравнивается без учёта регистра — официанту не нужно следить за
+// заглавными буквами при наборе.
 export async function fetchRestaurantByPin(pin) {
   if (!supabase) return { error: "Сайт не настроен (нет подключения к базе)." };
   const { data, error } = await supabase
     .from("restaurants")
     .select("id, name, menu, status, pin")
-    .eq("pin", pin.trim())
+    .eq("pin", pin.trim().toUpperCase())
     .maybeSingle();
 
   if (error) return { error: error.message };

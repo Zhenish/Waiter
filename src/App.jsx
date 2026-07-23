@@ -15,6 +15,7 @@ const getCategoryIcon = iconByKey;
 
 const WAITER_NAMES = ["Официант 1", "Официант 2", "Официант 3", "Официант 4"];
 const POLL_INTERVAL = 5000; // мс — как часто подтягивать заказы других официантов
+const HISTORY_RETENTION_DAYS = 14; // сколько дней хранить выполненные заказы в истории
 
 // Карточка всегда одной высоты — это то, что делает расчет страниц предсказуемым
 const CARD_H = 132; // px, высота карточки блюда
@@ -84,9 +85,22 @@ function OrderScreen({
     setOrderHistory(rows.filter((r) => r.completedDate));
   };
 
+  // История хранится ограниченное время — старые выполненные заказы стираются
+  // сами, чтобы база не разрасталась бесконечно (см. HISTORY_RETENTION_DAYS).
+  const cleanupOldOrders = async () => {
+    if (!supabase) return;
+    const cutoff = new Date(Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("orders")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .lt("completed_at", cutoff);
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      await cleanupOldOrders();
       await fetchOrders();
       if (!cancelled) setOrdersLoading(false);
     })();
@@ -981,11 +995,11 @@ function PinScreen({ onResolved }) {
         <input
           style={wrapperStyles.pinInput}
           type="text"
-          inputMode="numeric"
           autoFocus
+          maxLength={6}
           placeholder="••••••"
           value={pin}
-          onChange={(e) => setPin(e.target.value.replace(/\s/g, ""))}
+          onChange={(e) => setPin(e.target.value.replace(/\s/g, "").toUpperCase())}
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
         {error && <p style={wrapperStyles.pinError}>{error}</p>}

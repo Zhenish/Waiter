@@ -23,6 +23,7 @@ const PANEL = "#242120";
 const PAPER = "#F4EFE6";
 
 const POLL_INTERVAL = 5000;
+const HISTORY_RETENTION_DAYS = 14; // сколько дней хранить выполненные заказы в истории
 
 const money = (n) => (n || 0).toLocaleString("ru-RU");
 const formatDate = (iso) =>
@@ -113,8 +114,20 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
     setHistory(rows.filter((r) => r.completedDate));
   };
 
+  // История хранится ограниченное время — старые выполненные заказы стираются
+  // сами, чтобы база не разрасталась бесконечно (см. HISTORY_RETENTION_DAYS).
+  const cleanupOldOrders = async () => {
+    if (!supabase) return;
+    const cutoff = new Date(Date.now() - HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    await supabase
+      .from("orders")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .lt("completed_at", cutoff);
+  };
+
   useEffect(() => {
-    fetchOrders();
+    cleanupOldOrders().then(fetchOrders);
     const interval = setInterval(fetchOrders, POLL_INTERVAL);
     return () => clearInterval(interval);
   }, [restaurantId]);
@@ -302,7 +315,7 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
   }, [stopSearch, items]);
 
   const submitMenuPin = () => {
-    if (menuPin.trim() === String(restaurantPin || "").trim()) {
+    if (menuPin.trim().toUpperCase() === String(restaurantPin || "").trim().toUpperCase()) {
       setMenuUnlocked(true);
       setMenuPinError(null);
     } else {
@@ -538,11 +551,11 @@ export default function AdminScreen({ restaurantId, restaurantName, restaurantPi
               <input
                 style={styles.menuPinInput}
                 type="text"
-                inputMode="numeric"
-                placeholder="••••"
+                maxLength={6}
+                placeholder="••••••"
                 value={menuPin}
                 onChange={(e) => {
-                  setMenuPin(e.target.value.replace(/\s/g, ""));
+                  setMenuPin(e.target.value.replace(/\s/g, "").toUpperCase());
                   setMenuPinError(null);
                 }}
                 onKeyDown={(e) => e.key === "Enter" && submitMenuPin()}

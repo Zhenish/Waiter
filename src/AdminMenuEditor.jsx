@@ -19,7 +19,7 @@ export default function AdminMenuGate({ restaurantId, restaurantName, restaurant
 
   if (!unlocked) {
     const submit = () => {
-      if (pin.trim() === String(restaurantPin || "").trim()) {
+      if (pin.trim().toUpperCase() === String(restaurantPin || "").trim().toUpperCase()) {
         setUnlocked(true);
         setPinError(null);
       } else {
@@ -41,12 +41,12 @@ export default function AdminMenuGate({ restaurantId, restaurantName, restaurant
           <input
             style={styles.gateInput}
             type="text"
-            inputMode="numeric"
             autoFocus
+            maxLength={6}
             placeholder="••••••"
             value={pin}
             onChange={(e) => {
-              setPin(e.target.value.replace(/\s/g, ""));
+              setPin(e.target.value.replace(/\s/g, "").toUpperCase());
               setPinError(null);
             }}
             onKeyDown={(e) => e.key === "Enter" && submit()}
