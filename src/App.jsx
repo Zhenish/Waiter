@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
-import { Plus, Minus, ChevronLeft, ChevronRight, X, Check, MessageSquarePlus, MessageSquareText, History, Trash2, Eye, User, LogOut, WifiOff, UtensilsCrossed, Wine, Flame, Cigarette, Sparkles, Coffee, Package, Wrench, ShoppingBag, Beer, IceCream, Gift, Menu as MenuIcon } from "lucide-react";
+import { Plus, Minus, ChevronLeft, ChevronRight, X, Check, MessageSquarePlus, MessageSquareText, History, Trash2, Eye, User, LogOut, WifiOff, ShieldCheck } from "lucide-react";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import {
   getCachedRestaurantId,
@@ -7,25 +7,11 @@ import {
   fetchRestaurantByPin,
   fetchRestaurantById,
 } from "./restaurant";
+import { iconByKey } from "./menuIcons";
+import AdminMenuGate from "./AdminMenuEditor";
 
-// Набор доступных иконок для рубрик — ключ "icon" в menus/<id>.json должен быть
-// одним из этих слов. Если указано что-то другое или иконка не указана —
-// используется значок по умолчанию (MenuIcon).
-const CATEGORY_ICONS = {
-  utensils: UtensilsCrossed,
-  wine: Wine,
-  flame: Flame,
-  cigarette: Cigarette,
-  sparkles: Sparkles,
-  coffee: Coffee,
-  package: Package,
-  wrench: Wrench,
-  "shopping-bag": ShoppingBag,
-  beer: Beer,
-  "ice-cream": IceCream,
-  gift: Gift,
-};
-const getCategoryIcon = (iconKey) => CATEGORY_ICONS[iconKey] || MenuIcon;
+// Ключ "icon" в меню кафе должен быть одним из ключей menuIcons.ICON_OPTIONS.
+const getCategoryIcon = iconByKey;
 
 const WAITER_NAMES = ["Официант 1", "Официант 2", "Официант 3", "Официант 4"];
 const POLL_INTERVAL = 5000; // мс — как часто подтягивать заказы других официантов
@@ -250,9 +236,9 @@ function OrderScreen({
 
   const allItemsById = useMemo(() => {
     const map = {};
-    [...FOOD, ...BAR].forEach((i) => (map[i.id] = i));
+    menuItems.forEach((i) => (map[i.id] = i));
     return map;
-  }, []);
+  }, [menuItems]);
 
   const totalCount = Object.values(qty).reduce((a, b) => a + b, 0);
   const totalSum = Object.entries(qty).reduce(
@@ -419,12 +405,14 @@ function OrderScreen({
         >
           {pageItems.map((item) => {
             const n = qty[item.id] || 0;
+            const stopped = Boolean(item.stopped);
             return (
               <div
                 key={item.id}
                 style={{
                   ...styles.card,
                   ...(n > 0 ? styles.cardActive : {}),
+                  ...(stopped ? styles.cardStopped : {}),
                 }}
               >
                 <div style={styles.cardTop}>
@@ -450,27 +438,31 @@ function OrderScreen({
                   )}
                   <div style={styles.cardPrice}>{money(item.price)} ₽</div>
                 </div>
-                <div style={styles.stepper}>
-                  <button
-                    style={{
-                      ...styles.stepBtn,
-                      opacity: n === 0 ? 0.35 : 1,
-                    }}
-                    onClick={() => changeQty(item.id, -1)}
-                    disabled={n === 0}
-                    aria-label={`Убрать ${item.name}`}
-                  >
-                    <Minus size={16} strokeWidth={3} />
-                  </button>
-                  <span style={styles.stepNum}>{n}</span>
-                  <button
-                    style={styles.stepBtn}
-                    onClick={() => changeQty(item.id, 1)}
-                    aria-label={`Добавить ${item.name}`}
-                  >
-                    <Plus size={16} strokeWidth={3} />
-                  </button>
-                </div>
+                {stopped ? (
+                  <div style={styles.stoppedBadge}>Стоп-лист</div>
+                ) : (
+                  <div style={styles.stepper}>
+                    <button
+                      style={{
+                        ...styles.stepBtn,
+                        opacity: n === 0 ? 0.35 : 1,
+                      }}
+                      onClick={() => changeQty(item.id, -1)}
+                      disabled={n === 0}
+                      aria-label={`Убрать ${item.name}`}
+                    >
+                      <Minus size={16} strokeWidth={3} />
+                    </button>
+                    <span style={styles.stepNum}>{n}</span>
+                    <button
+                      style={styles.stepBtn}
+                      onClick={() => changeQty(item.id, 1)}
+                      aria-label={`Добавить ${item.name}`}
+                    >
+                      <Plus size={16} strokeWidth={3} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -910,7 +902,7 @@ function SetupNotice() {
   );
 }
 
-function WaiterPicker({ onPick, onSwitchCafe, restaurantName }) {
+function WaiterPicker({ onPick, onSwitchCafe, onAdmin, restaurantName }) {
   const [custom, setCustom] = useState("");
 
   return (
@@ -948,6 +940,10 @@ function WaiterPicker({ onPick, onSwitchCafe, restaurantName }) {
             Войти
           </button>
         </div>
+        <button style={wrapperStyles.adminBtn} onClick={onAdmin}>
+          <ShieldCheck size={15} strokeWidth={2.2} />
+          Я администратор
+        </button>
         <button style={wrapperStyles.linkBtn} onClick={onSwitchCafe}>
           Не то кафе? Сменить
         </button>
@@ -1024,10 +1020,35 @@ export default function App() {
   // restaurant: null (ещё не знаем), undefined (загружается), объект (готово)
   const [restaurant, setRestaurant] = useState(undefined);
 
-  // При открытии сайта — проверяем, не привязано ли уже это устройство к кафе
+  // Выбор "Я администратор" происходит на том же экране, что и выбор
+  // официанта (сразу при входе в заведение) — см. WaiterPicker.
+  const [adminMode, setAdminMode] = useState(false);
+
+  // Читаем PIN из ссылки один раз при создании компонента (а не заново внутри
+  // эффекта) — иначе в дев-режиме React.StrictMode вызывает эффект дважды, и
+  // первый же вызов стирает ?pin= из адресной строки до того, как второй
+  // успеет его прочитать.
+  const pinFromLinkRef = useRef(new URLSearchParams(window.location.search).get("pin"));
+
+  // При открытии сайта — проверяем сначала ссылку с PIN (?pin=...), которую
+  // выдаёт владельцу панель управления для быстрого входа без ручного набора,
+  // а если её нет — привязано ли уже это устройство к кафе.
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      const pinFromLink = pinFromLinkRef.current;
+      if (pinFromLink) {
+        // убираем PIN из адресной строки, чтобы не остался в истории/закладках
+        window.history.replaceState({}, "", window.location.pathname + window.location.hash);
+        const { restaurant: found, error } = await fetchRestaurantByPin(pinFromLink);
+        if (cancelled) return;
+        if (!error && found) {
+          setCachedRestaurantId(found.id);
+          setRestaurant(found);
+          return;
+        }
+      }
+
       const cachedId = getCachedRestaurantId();
       if (!cachedId) {
         if (!cancelled) setRestaurant(null);
@@ -1091,11 +1112,23 @@ export default function App() {
   if (!isSupabaseConfigured) return <SetupNotice />;
   if (restaurant === undefined) return null; // проверяем кэш — доля секунды
   if (restaurant === null) return <PinScreen onResolved={onPinResolved} />;
+  if (adminMode)
+    return (
+      <AdminMenuGate
+        restaurantId={restaurant.id}
+        restaurantName={restaurant.name}
+        restaurantPin={restaurant.pin}
+        menu={restaurant.menu || { categories: [], items: [] }}
+        onExit={() => setAdminMode(false)}
+        onMenuUpdated={(menu) => setRestaurant((r) => ({ ...r, menu }))}
+      />
+    );
   if (!waiterName)
     return (
       <WaiterPicker
         onPick={pickWaiter}
         onSwitchCafe={switchCafe}
+        onAdmin={() => setAdminMode(true)}
         restaurantName={restaurant.name}
       />
     );
@@ -1216,6 +1249,22 @@ const wrapperStyles = {
     textDecoration: "underline",
     cursor: "pointer",
     textAlign: "center",
+  },
+  adminBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    width: "100%",
+    marginTop: 14,
+    padding: "10px 0",
+    borderRadius: 10,
+    border: "1px dashed #3a3532",
+    background: "none",
+    color: "#9a938d",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
   },
 };
 
@@ -1608,6 +1657,18 @@ const styles = {
   cardActive: {
     borderColor: GOLD,
     boxShadow: `0 0 0 1px ${GOLD} inset`,
+  },
+  cardStopped: {
+    opacity: 0.5,
+  },
+  stoppedBadge: {
+    textAlign: "center",
+    background: "rgba(224,122,114,0.15)",
+    color: "#e07a72",
+    fontSize: 11.5,
+    fontWeight: 700,
+    borderRadius: 8,
+    padding: "6px 0",
   },
   cardTop: {
     marginBottom: 10,

@@ -29,7 +29,7 @@ export async function fetchRestaurantByPin(pin) {
   if (!supabase) return { error: "Сайт не настроен (нет подключения к базе)." };
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, name, menu, status")
+    .select("id, name, menu, status, pin")
     .eq("pin", pin.trim())
     .maybeSingle();
 
@@ -47,7 +47,7 @@ export async function fetchRestaurantById(id) {
   if (!supabase) return { error: "Сайт не настроен (нет подключения к базе)." };
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, name, menu, status")
+    .select("id, name, menu, status, pin")
     .eq("id", id)
     .maybeSingle();
 

@@ -10,10 +10,20 @@ document.title = "Меню официанта";
 // корне, а панель владельца — по адресу с хэшем #owner (например,
 // https://твой-сайт/#owner). Такой подход не требует настройки серверных
 // перенаправлений на GitHub Pages.
-const isOwnerRoute = window.location.hash === "#owner";
+//
+// Переход между # / и #owner меняет только фрагмент URL — браузер в этом
+// случае не делает полную перезагрузку страницы (это "навигация в пределах
+// документа"), поэтому слушаем hashchange и перерисовываем дерево сами.
+const root = ReactDOM.createRoot(document.getElementById("root"));
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    {isOwnerRoute ? <OwnerGate /> : <App />}
-  </React.StrictMode>
-);
+function render() {
+  const isOwnerRoute = window.location.hash === "#owner";
+  root.render(
+    <React.StrictMode>
+      {isOwnerRoute ? <OwnerGate /> : <App />}
+    </React.StrictMode>
+  );
+}
+
+window.addEventListener("hashchange", render);
+render();

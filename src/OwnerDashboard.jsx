@@ -9,20 +9,9 @@ import {
   PowerOff,
   Pencil,
   Copy,
+  Link as LinkIcon,
   RefreshCw,
   Upload,
-  UtensilsCrossed,
-  Wine,
-  Flame,
-  Cigarette,
-  Sparkles,
-  Coffee,
-  Package,
-  Wrench,
-  ShoppingBag,
-  Beer,
-  IceCream,
-  Gift,
   Store,
   LogOut,
   RefreshCcw,
@@ -30,24 +19,7 @@ import {
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
 import { validateMenu, isValidCafeId } from "../scripts/menu-utils.mjs";
 import { lockOwner } from "./ownerAuth";
-
-// --- Иконки рубрик (тот же набор, что и в реальном сайте) -----------------
-
-const ICON_OPTIONS = [
-  { key: "utensils", label: "Еда", Icon: UtensilsCrossed },
-  { key: "wine", label: "Вино", Icon: Wine },
-  { key: "flame", label: "Кальян", Icon: Flame },
-  { key: "cigarette", label: "Сигареты", Icon: Cigarette },
-  { key: "sparkles", label: "Услуги", Icon: Sparkles },
-  { key: "coffee", label: "Кофе", Icon: Coffee },
-  { key: "package", label: "Другое", Icon: Package },
-  { key: "wrench", label: "Инструменты", Icon: Wrench },
-  { key: "shopping-bag", label: "Товары", Icon: ShoppingBag },
-  { key: "beer", label: "Пиво", Icon: Beer },
-  { key: "ice-cream", label: "Десерты", Icon: IceCream },
-  { key: "gift", label: "Подарки", Icon: Gift },
-];
-const iconByKey = (key) => ICON_OPTIONS.find((o) => o.key === key)?.Icon || Package;
+import { ICON_OPTIONS, iconByKey } from "./menuIcons";
 
 const money = (n) => (n || 0).toLocaleString("ru-RU");
 
@@ -77,6 +49,10 @@ const slugify = (name) =>
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "") || `kafe-${Date.now().toString().slice(-5)}`;
 
+// Ссылка для конкретного кафе — офиициант переходит по ней и сразу входит,
+// не набирая PIN руками (PIN всё равно подставляется автоматически по нему же).
+const cafeLink = (pin) => `${window.location.origin}${window.location.pathname}?pin=${pin}`;
+
 export default function OwnerDashboard({ onLock }) {
   const [restaurants, setRestaurants] = useState(null); // null = ещё грузится
   const [search, setSearch] = useState("");
@@ -84,6 +60,13 @@ export default function OwnerDashboard({ onLock }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [copiedLinkId, setCopiedLinkId] = useState(null);
+
+  const copyLink = (r) => {
+    navigator.clipboard?.writeText(cafeLink(r.pin));
+    setCopiedLinkId(r.id);
+    setTimeout(() => setCopiedLinkId((cur) => (cur === r.id ? null : cur)), 1500);
+  };
 
   const loadAll = async () => {
     const { data, error } = await supabase
@@ -323,6 +306,19 @@ export default function OwnerDashboard({ onLock }) {
                   <Pencil size={14} strokeWidth={2.2} />
                   Редактировать меню
                 </button>
+                <button style={styles.actionBtn} onClick={() => copyLink(r)}>
+                  {copiedLinkId === r.id ? (
+                    <>
+                      <Check size={14} strokeWidth={2.2} />
+                      Ссылка скопирована
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon size={14} strokeWidth={2.2} />
+                      Ссылка для входа
+                    </>
+                  )}
+                </button>
                 <button style={styles.actionBtn} onClick={() => toggleStatus(r.id)}>
                   {r.status === "active" ? (
                     <>
@@ -536,9 +532,13 @@ function CafeEditor({ cafe, error, existingPins = [], onChange, onCancel, onSave
             </div>
           )}
 
-          <div style={styles.sectionTitle}>Или добавляйте по одному — рубрики</div>
+          <div style={styles.sectionTitle}>Рубрики меню</div>
           <p style={styles.sectionHint}>
-            Можно и так, и так одновременно: часть блюд закинуть кодом выше, часть — дописать вручную ниже.
+            Рубрика — это раздел меню, между которыми официант переключается
+            вкладками наверху, например «Кухня», «Напитки», «Бар», «Десерты».
+            Сначала заведите нужные рубрики здесь, а потом у каждого блюда
+            ниже укажете, в какую рубрику оно попадает. Можно и так, и кодом
+            выше одновременно — не затрёт то, что уже есть.
           </p>
           {cafe.menu.categories.map((cat, idx) => {
             const Icon = iconByKey(cat.icon);
@@ -548,7 +548,7 @@ function CafeEditor({ cafe, error, existingPins = [], onChange, onCancel, onSave
                 <input
                   style={styles.catNameInput}
                   value={cat.name}
-                  placeholder="Название рубрики"
+                  placeholder="Например: Кухня"
                   onChange={(e) => updateCategory(idx, { name: e.target.value })}
                 />
                 <select

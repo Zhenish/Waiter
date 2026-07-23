@@ -1,0 +1,1298 @@
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Shield,
+  LogOut,
+  Eye,
+  Search,
+  X,
+  Lock,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  Settings2,
+} from "lucide-react";
+import { supabase } from "./supabaseClient";
+import { ICON_OPTIONS, iconByKey } from "./menuIcons";
+import MenuEditor from "./MenuEditor";
+
+const WINE = "#8C2F2A";
+const GOLD = "#C9982E";
+const INK = "#1B1918";
+const PANEL = "#242120";
+const PAPER = "#F4EFE6";
+
+const POLL_INTERVAL = 5000;
+
+const money = (n) => (n || 0).toLocaleString("ru-RU");
+const formatDate = (iso) =>
+  new Date(iso).toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+// Экран администратора КОНКРЕТНОГО кафе — открывается после входа "Я
+// администратор" на экране выбора официанта (см. AdminMenuGate, требует
+// свой PIN, не запоминается). Вкладки вверху, как у официанта: "Активные"
+// (заказы ВСЕХ официантов, только просмотр — без права выполнить/удалить),
+// "Кухня/Бар" (очередь по рубрикам), "Аналитика", "История", "Стоп-лист"
+// (быстрый вкл/выкл по каждому блюду). "Меню" — отдельная защищённая
+// вкладка: требует ЕЩЁ РАЗ ввести PIN кафе, который не запоминается даже
+// в рамках одной сессии администратора — специально, потому что правки
+// меню сразу видят все официанты и клиенты.
+export default function AdminScreen({ restaurantId, restaurantName, restaurantPin, menu, onExit, onMenuUpdated }) {
+  const [tab, setTab] = useState("active"); // active | kitchen | stats | done | stop | menu
+
+  const [categories, setCategories] = useState(menu?.categories || []);
+  const [items, setItems] = useState(menu?.items || []);
+  const [saveError, setSaveError] = useState(null);
+
+  const [allActive, setAllActive] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersError, setOrdersError] = useState(null);
+  const [viewingOrder, setViewingOrder] = useState(null);
+
+  const [stopSearch, setStopSearch] = useState("");
+
+  // Разблокировка вкладки "Меню" НЕ запоминается — при каждом уходе с неё
+  // и возврате обратно PIN приходится вводить заново.
+  const [menuUnlocked, setMenuUnlocked] = useState(false);
+  const [menuPin, setMenuPin] = useState("");
+  const [menuPinError, setMenuPinError] = useState(null);
+  useEffect(() => {
+    if (tab !== "menu") {
+      setMenuUnlocked(false);
+      setMenuPin("");
+      setMenuPinError(null);
+    }
+  }, [tab]);
+
+  // Внутри "Меню" — рубрика-вкладка для точечного редактирования блюд,
+  // плюс отдельная кнопка на полный редактор (рубрики + вставка JSON).
+  const [menuCategory, setMenuCategory] = useState(categories[0]?.id || "");
+  // itemModal: null | { mode: "add" | "edit", id?, name, price, category }
+  const [itemModal, setItemModal] = useState(null);
+  const [itemModalError, setItemModalError] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  // categoryModal: null | { mode: "add" | "edit", id?, name, icon }
+  const [categoryModal, setCategoryModal] = useState(null);
+  const [categoryModalError, setCategoryModalError] = useState(null);
+  const [confirmDeleteCategory, setConfirmDeleteCategory] = useState(null); // объект рубрики или null
+  const [showFullEditor, setShowFullEditor] = useState(false);
+
+  // --- Заказы всех официантов (для "Активные"/"Кухня-Бар"/"История"/"Аналитика") ---
+  const mapRow = (row) => ({
+    id: row.id,
+    table: row.table_number,
+    waiter: row.waiter,
+    date: row.created_at,
+    completedDate: row.completed_at,
+    itemsCount: row.items_count,
+    total: row.total,
+    items: row.items || [],
+  });
+
+  const fetchOrders = async () => {
+    if (!supabase) return;
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: false });
+    setOrdersLoading(false);
+    if (error) {
+      setOrdersError(error.message);
+      return;
+    }
+    setOrdersError(null);
+    const rows = (data || []).map(mapRow);
+    setAllActive(rows.filter((r) => !r.completedDate));
+    setHistory(rows.filter((r) => r.completedDate));
+  };
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [restaurantId]);
+
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
+
+  // Очередь по рубрикам: сколько чего сейчас ждёт готовки, отдельно по
+  // каждой рубрике меню (не только еда/бар — сколько рубрик, столько колонок)
+  const kitchenQueue = useMemo(() => {
+    const buckets = new Map(categories.map((c) => [c.id, new Map()]));
+    allActive.forEach((order) => {
+      (order.items || []).forEach((it) => {
+        const catId = itemsById.get(it.id)?.category;
+        const bucket = buckets.get(catId);
+        if (!bucket) return; // рубрику потом удалили/переименовали — пропускаем
+        const existing = bucket.get(it.id);
+        if (existing) {
+          existing.qty += it.n;
+          existing.tables.push(order.table);
+        } else {
+          bucket.set(it.id, { name: it.name, qty: it.n, tables: [order.table] });
+        }
+      });
+    });
+    return categories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      icon: c.icon,
+      list: [...(buckets.get(c.id)?.values() || [])].sort((a, b) => b.qty - a.qty),
+    }));
+  }, [allActive, itemsById, categories]);
+
+  const stats = useMemo(() => {
+    const isToday = (iso) => new Date(iso).toDateString() === new Date().toDateString();
+    const todayOrders = history.filter((o) => isToday(o.completedDate));
+    const totalRevenue = history.reduce((s, o) => s + (o.total || 0), 0);
+    const totalOrders = history.length;
+    const avgCheck = totalOrders ? Math.round(totalRevenue / totalOrders) : 0;
+    const todayRevenue = todayOrders.reduce((s, o) => s + (o.total || 0), 0);
+
+    const itemAgg = {};
+    const waiterAgg = {};
+    history.forEach((o) => {
+      (o.items || []).forEach((it) => {
+        const a = itemAgg[it.name] || { name: it.name, qty: 0 };
+        a.qty += it.n || 0;
+        itemAgg[it.name] = a;
+      });
+      const w = waiterAgg[o.waiter] || { waiter: o.waiter, count: 0, revenue: 0 };
+      w.count += 1;
+      w.revenue += o.total || 0;
+      waiterAgg[o.waiter] = w;
+    });
+
+    return {
+      ordersToday: todayOrders.length,
+      todayRevenue,
+      totalOrders,
+      totalRevenue,
+      avgCheck,
+      topDishes: Object.values(itemAgg).sort((a, b) => b.qty - a.qty).slice(0, 5),
+      waiterList: Object.values(waiterAgg).sort((a, b) => b.revenue - a.revenue),
+    };
+  }, [history]);
+
+  // --- Правки меню — сохраняются сразу в restaurants.menu ---
+  // Возвращает null при успехе или текст ошибки при неудаче.
+  const persist = async (nextItems, nextCategories = categories) => {
+    setSaveError(null);
+    const newMenu = { categories: nextCategories, items: nextItems };
+    const { error } = await supabase
+      .from("restaurants")
+      .update({ menu: newMenu, updated_at: new Date().toISOString() })
+      .eq("id", restaurantId);
+    if (error) {
+      setSaveError(error.message);
+      return error.message;
+    }
+    setItems(nextItems);
+    setCategories(nextCategories);
+    onMenuUpdated(newMenu);
+    return null;
+  };
+
+  const toggleStop = (item) => {
+    persist(items.map((i) => (i.id === item.id ? { ...i, stopped: !i.stopped } : i)));
+  };
+
+  const startEdit = (item) => {
+    setConfirmDeleteId(null);
+    setItemModalError(null);
+    setItemModal({ mode: "edit", id: item.id, name: item.name, price: String(item.price ?? ""), category: item.category });
+  };
+
+  const openAddItem = () => {
+    setItemModalError(null);
+    setItemModal({ mode: "add", name: "", price: "", category: menuCategory });
+  };
+
+  const submitItemModal = async () => {
+    if (!itemModal.name.trim()) {
+      setItemModalError("Впишите название блюда.");
+      return;
+    }
+    const price = Number(itemModal.price) || 0;
+    let next;
+    if (itemModal.mode === "add") {
+      const id = `item${Date.now().toString().slice(-6)}`;
+      next = [...items, { id, name: itemModal.name.trim(), price, category: itemModal.category }];
+    } else {
+      next = items.map((i) =>
+        i.id === itemModal.id ? { ...i, name: itemModal.name.trim(), price, category: itemModal.category } : i
+      );
+    }
+    const err = await persist(next);
+    if (!err) {
+      setItemModal(null);
+      setMenuCategory(itemModal.category);
+    } else {
+      setItemModalError(err);
+    }
+  };
+
+  const deleteMenuItem = async (id) => {
+    setConfirmDeleteId(null);
+    await persist(items.filter((i) => i.id !== id));
+  };
+
+  const openAddCategory = () => {
+    setCategoryModalError(null);
+    setCategoryModal({ mode: "add", name: "", icon: "package" });
+  };
+
+  const startEditCategory = (cat) => {
+    setCategoryModalError(null);
+    setCategoryModal({ mode: "edit", id: cat.id, name: cat.name, icon: cat.icon });
+  };
+
+  const submitCategoryModal = async () => {
+    if (!categoryModal.name.trim()) {
+      setCategoryModalError("Впишите название рубрики.");
+      return;
+    }
+    let nextCategories;
+    let selectedId;
+    if (categoryModal.mode === "add") {
+      const id = `cat${Date.now().toString().slice(-6)}`;
+      selectedId = id;
+      nextCategories = [...categories, { id, name: categoryModal.name.trim(), icon: categoryModal.icon }];
+    } else {
+      selectedId = categoryModal.id;
+      nextCategories = categories.map((c) =>
+        c.id === categoryModal.id ? { ...c, name: categoryModal.name.trim(), icon: categoryModal.icon } : c
+      );
+    }
+    const err = await persist(items, nextCategories);
+    if (!err) {
+      setCategoryModal(null);
+      setMenuCategory(selectedId);
+    } else {
+      setCategoryModalError(err);
+    }
+  };
+
+  const itemCountByCategory = useMemo(() => {
+    const map = new Map();
+    items.forEach((i) => map.set(i.category, (map.get(i.category) || 0) + 1));
+    return map;
+  }, [items]);
+
+  const deleteCategory = async (cat) => {
+    setConfirmDeleteCategory(null);
+    const nextCategories = categories.filter((c) => c.id !== cat.id);
+    const nextItems = items.filter((i) => i.category !== cat.id);
+    const err = await persist(nextItems, nextCategories);
+    if (!err && menuCategory === cat.id) {
+      setMenuCategory(nextCategories[0]?.id || "");
+    }
+  };
+
+  const stopListItems = useMemo(() => {
+    const q = stopSearch.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((i) => i.name.toLowerCase().includes(q));
+  }, [stopSearch, items]);
+
+  const submitMenuPin = () => {
+    if (menuPin.trim() === String(restaurantPin || "").trim()) {
+      setMenuUnlocked(true);
+      setMenuPinError(null);
+    } else {
+      setMenuPinError("Неверный PIN-код.");
+    }
+  };
+
+  const tabs = [
+    { id: "active", label: `Активные${allActive.length > 0 ? ` (${allActive.length})` : ""}` },
+    { id: "kitchen", label: "Кухня/Бар" },
+    { id: "stats", label: "Аналитика" },
+    { id: "done", label: "История" },
+    { id: "stop", label: `Стоп-лист${items.some((i) => i.stopped) ? ` (${items.filter((i) => i.stopped).length})` : ""}` },
+    { id: "menu", label: "Меню", locked: true },
+  ];
+
+  return (
+    <div style={styles.app}>
+      <div style={styles.header}>
+        <div style={styles.waiterRow}>
+          <div style={styles.waiterBadge}>
+            <Shield size={13} strokeWidth={2.4} />
+            Администратор
+          </div>
+          <button style={styles.switchWaiterBtn} onClick={onExit}>
+            <LogOut size={13} strokeWidth={2.2} />
+            Сменить
+          </button>
+        </div>
+        <div style={styles.adminTabs}>
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              style={{ ...styles.adminTab, ...(tab === t.id ? styles.adminTabActive : {}) }}
+              onClick={() => setTab(t.id)}
+            >
+              {t.locked && <Lock size={12} strokeWidth={2.4} style={{ marginRight: 3 }} />}
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={styles.adminBody}>
+        {saveError && <div style={styles.saveErrorBanner}>Ошибка сохранения: {saveError}</div>}
+
+        {tab === "active" &&
+          (ordersLoading ? (
+            <p style={styles.empty}>Загрузка...</p>
+          ) : allActive.length === 0 ? (
+            <p style={styles.empty}>Сейчас ни у одного официанта нет активных заказов.</p>
+          ) : (
+            <div style={styles.modalList}>
+              {allActive.map((entry) => (
+                <div key={entry.id} style={styles.orderRow}>
+                  <button style={styles.orderRowMain} onClick={() => setViewingOrder(entry)}>
+                    <span style={styles.orderTable}>
+                      Стол №{entry.table} · {entry.waiter}
+                    </span>
+                    <span style={styles.orderMeta}>
+                      {formatDate(entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} ₽
+                    </span>
+                  </button>
+                  <button style={styles.eyeBtn} onClick={() => setViewingOrder(entry)} aria-label="Состав заказа">
+                    <Eye size={17} strokeWidth={2.2} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+
+        {tab === "done" &&
+          (ordersLoading ? (
+            <p style={styles.empty}>Загрузка...</p>
+          ) : history.length === 0 ? (
+            <p style={styles.empty}>Пока нет выполненных заказов.</p>
+          ) : (
+            <div style={styles.modalList}>
+              {history.map((entry) => (
+                <div key={entry.id} style={styles.orderRow}>
+                  <button style={styles.orderRowMain} onClick={() => setViewingOrder(entry)}>
+                    <span style={styles.orderTable}>
+                      Стол №{entry.table} · {entry.waiter}
+                    </span>
+                    <span style={styles.orderMeta}>
+                      {formatDate(entry.completedDate || entry.date)} · {entry.itemsCount} поз. · {money(entry.total)} ₽
+                    </span>
+                  </button>
+                  <button style={styles.eyeBtn} onClick={() => setViewingOrder(entry)} aria-label="Состав заказа">
+                    <Eye size={17} strokeWidth={2.2} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ))}
+
+        {tab === "kitchen" && (
+          <div style={styles.kitchenCols}>
+            {kitchenQueue.map((col) => {
+              const ColIcon = iconByKey(col.icon);
+              return (
+                <div key={col.id} style={styles.kitchenCol}>
+                  <div style={styles.kitchenColTitle}>
+                    <ColIcon size={15} strokeWidth={2.2} />
+                    {col.name || col.id}
+                  </div>
+                  {col.list.length === 0 ? (
+                    <p style={styles.empty}>Ничего не ждёт в этой рубрике.</p>
+                  ) : (
+                    col.list.map((d) => (
+                      <div key={d.name} style={styles.kitchenRow}>
+                        <span style={styles.kitchenRowName}>{d.name}</span>
+                        <span style={styles.kitchenRowQty}>×{d.qty}</span>
+                        <span style={styles.kitchenRowTables}>столы: {d.tables.join(", ")}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab === "stats" && (
+          <div>
+            <div style={styles.statCards}>
+              <div style={styles.statCard}>
+                <div style={styles.statValue}>{stats.ordersToday}</div>
+                <div style={styles.statLabel}>заказов сегодня</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={styles.statValue}>{money(stats.todayRevenue)} ₽</div>
+                <div style={styles.statLabel}>выручка сегодня</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={styles.statValue}>{money(stats.avgCheck)} ₽</div>
+                <div style={styles.statLabel}>средний чек</div>
+              </div>
+              <div style={styles.statCard}>
+                <div style={styles.statValue}>{stats.totalOrders}</div>
+                <div style={styles.statLabel}>заказов всего</div>
+              </div>
+            </div>
+
+            <div style={styles.statSectionTitle}>Топ блюд</div>
+            {stats.topDishes.length === 0 ? (
+              <p style={styles.empty}>Пока нет выполненных заказов.</p>
+            ) : (
+              <div style={styles.modalList}>
+                {stats.topDishes.map((d, idx) => (
+                  <div key={d.name} style={styles.statRow}>
+                    <span style={styles.statRowRank}>{idx + 1}</span>
+                    <span style={styles.statRowName}>{d.name}</span>
+                    <span style={styles.statRowValue}>×{d.qty}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={styles.statSectionTitle}>По официантам</div>
+            {stats.waiterList.length === 0 ? (
+              <p style={styles.empty}>Пока нет данных.</p>
+            ) : (
+              <div style={styles.modalList}>
+                {stats.waiterList.map((w) => (
+                  <div key={w.waiter} style={styles.statRow}>
+                    <span style={styles.statRowName}>{w.waiter}</span>
+                    <span style={styles.statRowValue}>
+                      {w.count} зак. · {money(w.revenue)} ₽
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "stop" && (
+          <>
+            <div style={styles.searchRow}>
+              <Search size={15} strokeWidth={2.2} color="#8a8480" />
+              <input
+                style={styles.searchInput}
+                placeholder="Поиск по меню..."
+                value={stopSearch}
+                onChange={(e) => setStopSearch(e.target.value)}
+              />
+              {stopSearch && (
+                <button style={styles.searchClear} onClick={() => setStopSearch("")} aria-label="Очистить поиск">
+                  <X size={15} strokeWidth={2.2} />
+                </button>
+              )}
+            </div>
+            {stopListItems.length === 0 ? (
+              <p style={styles.empty}>Ничего не найдено.</p>
+            ) : (
+              <div style={styles.modalList}>
+                {stopListItems.map((item) => {
+                  const CatIcon = iconByKey(categories.find((c) => c.id === item.category)?.icon);
+                  return (
+                    <div key={item.id} style={styles.stopRow}>
+                      <div style={styles.stopRowInfo}>
+                        <CatIcon size={14} strokeWidth={2.2} color="#8a8480" />
+                        <span style={styles.stopRowName}>{item.name}</span>
+                        <span style={styles.stopRowPrice}>{money(item.price)} ₽</span>
+                      </div>
+                      <button
+                        style={{ ...styles.stopToggleBtn, ...(item.stopped ? styles.stopToggleBtnActive : {}) }}
+                        onClick={() => toggleStop(item)}
+                      >
+                        {item.stopped ? "Вернуть в меню" : "В стоп-лист"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {tab === "menu" &&
+          (!menuUnlocked ? (
+            <div style={styles.menuLockBox}>
+              <div style={styles.menuLockIcon}>
+                <Lock size={22} strokeWidth={2.2} />
+              </div>
+              <div style={styles.menuLockTitle}>Изменение меню защищено PIN-кодом</div>
+              <p style={styles.menuLockWarning}>
+                В отличие от обычного входа, этот код не запоминается — его нужно
+                вводить каждый раз, когда вы хотите изменить меню. Правки сразу
+                видят все официанты и клиенты, поэтому здесь важна лишняя проверка.
+              </p>
+              <input
+                style={styles.menuPinInput}
+                type="text"
+                inputMode="numeric"
+                placeholder="••••"
+                value={menuPin}
+                onChange={(e) => {
+                  setMenuPin(e.target.value.replace(/\s/g, ""));
+                  setMenuPinError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && submitMenuPin()}
+              />
+              {menuPinError && <p style={styles.menuPinError}>{menuPinError}</p>}
+              <button style={styles.menuUnlockBtn} onClick={submitMenuPin}>
+                Разблокировать
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={styles.sectionTitle}>Рубрики</div>
+              <div style={styles.rubricRow}>
+                {categories.map((cat) => {
+                  const Icon = iconByKey(cat.icon);
+                  return (
+                    <div key={cat.id} style={styles.rubricChipWrap}>
+                      <button
+                        style={{ ...styles.rubricChip, ...(menuCategory === cat.id ? styles.adminTabActive : {}) }}
+                        onClick={() => setMenuCategory(cat.id)}
+                      >
+                        <Icon size={14} strokeWidth={2.2} />
+                        {cat.name || cat.id}
+                        <span style={styles.rubricCount}>{itemCountByCategory.get(cat.id) || 0}</span>
+                      </button>
+                      <button
+                        style={styles.rubricEditBtn}
+                        onClick={() => startEditCategory(cat)}
+                        aria-label={`Редактировать рубрику ${cat.name}`}
+                      >
+                        <Pencil size={12} strokeWidth={2.2} />
+                      </button>
+                    </div>
+                  );
+                })}
+                <button style={styles.rubricAddChip} onClick={openAddCategory}>
+                  <Plus size={14} strokeWidth={2.4} />
+                  Рубрика
+                </button>
+              </div>
+
+              <button style={styles.fullEditorBtn} onClick={() => setShowFullEditor(true)}>
+                <Settings2 size={14} strokeWidth={2.2} />
+                Вставить много блюд/рубрик JSON-кодом
+              </button>
+
+              {!categories.length ? (
+                <p style={styles.empty}>Рубрик пока нет — добавьте хотя бы одну кнопкой выше.</p>
+              ) : (
+                <>
+                  <div style={styles.sectionTitle}>Блюда</div>
+                  <div style={styles.grid}>
+                    {items
+                      .filter((i) => i.category === menuCategory)
+                      .map((item) => (
+                        <div key={item.id} style={{ ...styles.card, ...(item.stopped ? styles.cardStopped : {}) }}>
+                          <div style={styles.cardName}>
+                            {item.name}
+                            {item.stopped && <span style={styles.stopBadge}>СТОП</span>}
+                          </div>
+                          <div style={styles.cardPrice}>{money(item.price)} ₽</div>
+                          <div style={styles.cardActions}>
+                            {confirmDeleteId === item.id ? (
+                              <>
+                                <button style={styles.actionIconBtn} onClick={() => deleteMenuItem(item.id)} aria-label="Да, удалить">
+                                  <Check size={15} strokeWidth={2.4} color="#e07a72" />
+                                </button>
+                                <button style={styles.actionIconBtn} onClick={() => setConfirmDeleteId(null)} aria-label="Отмена">
+                                  <X size={15} strokeWidth={2.4} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button style={styles.actionIconBtn} onClick={() => startEdit(item)} aria-label={`Редактировать ${item.name}`}>
+                                  <Pencil size={14} strokeWidth={2.2} />
+                                </button>
+                                <button style={styles.actionIconBtn} onClick={() => setConfirmDeleteId(item.id)} aria-label={`Удалить ${item.name}`}>
+                                  <Trash2 size={14} strokeWidth={2.2} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    <button style={styles.addCard} onClick={openAddItem}>
+                      <Plus size={20} strokeWidth={2.4} />
+                      Добавить блюдо
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          ))}
+      </div>
+
+      {viewingOrder && (
+        <div style={styles.overlay} onClick={() => setViewingOrder(null)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <div>
+                <div style={styles.modalTitle}>Стол №{viewingOrder.table}</div>
+                <div style={styles.orderMeta}>
+                  {formatDate(viewingOrder.completedDate || viewingOrder.date)} · {viewingOrder.waiter}
+                </div>
+              </div>
+              <button style={styles.iconOnlyBtn} onClick={() => setViewingOrder(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              {viewingOrder.items.map((i) => (
+                <div key={i.id} style={styles.statRow}>
+                  <span>
+                    {i.n}× {i.name}
+                  </span>
+                  <span style={styles.statRowValue}>{money(i.price * i.n)} ₽</span>
+                </div>
+              ))}
+              <div style={{ ...styles.statRow, fontWeight: 700, marginTop: 8 }}>
+                <span>Итого</span>
+                <span>{money(viewingOrder.total)} ₽</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFullEditor && (
+        <MenuEditor
+          restaurantId={restaurantId}
+          initialMenu={{ categories, items }}
+          onClose={() => setShowFullEditor(false)}
+          onSaved={(newMenu) => {
+            setCategories(newMenu.categories);
+            setItems(newMenu.items);
+            if (!newMenu.categories.some((c) => c.id === menuCategory)) {
+              setMenuCategory(newMenu.categories[0]?.id || "");
+            }
+            onMenuUpdated(newMenu);
+          }}
+        />
+      )}
+
+      {itemModal && (
+        <div style={styles.overlay} onClick={() => setItemModal(null)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalTitle}>{itemModal.mode === "add" ? "Новое блюдо" : "Редактировать блюдо"}</span>
+              <button style={styles.iconOnlyBtn} onClick={() => setItemModal(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <label style={styles.fieldLabel}>Название</label>
+              <input
+                style={styles.fieldInput}
+                value={itemModal.name}
+                placeholder="Например: Плов с бараниной"
+                autoFocus
+                onChange={(e) => setItemModal((m) => ({ ...m, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && submitItemModal()}
+              />
+
+              <label style={styles.fieldLabel}>Цена</label>
+              <div style={styles.priceInputWrap}>
+                <input
+                  style={styles.priceInput}
+                  type="number"
+                  inputMode="decimal"
+                  value={itemModal.price}
+                  placeholder="0"
+                  onChange={(e) => setItemModal((m) => ({ ...m, price: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && submitItemModal()}
+                />
+                <span style={styles.priceSuffix}>₽</span>
+              </div>
+
+              <label style={styles.fieldLabel}>Рубрика</label>
+              <div style={styles.categoryPicker}>
+                {categories.map((cat) => {
+                  const Icon = iconByKey(cat.icon);
+                  return (
+                    <button
+                      key={cat.id}
+                      style={{ ...styles.categoryPill, ...(itemModal.category === cat.id ? styles.categoryPillActive : {}) }}
+                      onClick={() => setItemModal((m) => ({ ...m, category: cat.id }))}
+                    >
+                      <Icon size={15} strokeWidth={2.2} />
+                      {cat.name || cat.id}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {itemModalError && <div style={styles.saveError}>{itemModalError}</div>}
+            </div>
+            <div style={styles.modalFooter}>
+              <button style={styles.cancelBtn} onClick={() => setItemModal(null)}>
+                Отмена
+              </button>
+              <button style={styles.saveBtn} onClick={submitItemModal}>
+                <Check size={16} strokeWidth={2.4} />
+                {itemModal.mode === "add" ? "Добавить" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {categoryModal && (
+        <div style={styles.overlay} onClick={() => setCategoryModal(null)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <span style={styles.modalTitle}>{categoryModal.mode === "add" ? "Новая рубрика" : "Редактировать рубрику"}</span>
+              <button style={styles.iconOnlyBtn} onClick={() => setCategoryModal(null)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <label style={styles.fieldLabel}>Название</label>
+              <input
+                style={styles.fieldInput}
+                value={categoryModal.name}
+                placeholder="Например: Кухня, Напитки, Бар"
+                autoFocus
+                onChange={(e) => setCategoryModal((m) => ({ ...m, name: e.target.value }))}
+                onKeyDown={(e) => e.key === "Enter" && submitCategoryModal()}
+              />
+
+              <label style={styles.fieldLabel}>Иконка</label>
+              <div style={styles.iconPicker}>
+                {ICON_OPTIONS.map((o) => (
+                  <button
+                    key={o.key}
+                    style={{ ...styles.iconOption, ...(categoryModal.icon === o.key ? styles.iconOptionActive : {}) }}
+                    onClick={() => setCategoryModal((m) => ({ ...m, icon: o.key }))}
+                    aria-label={o.label}
+                    title={o.label}
+                  >
+                    <o.Icon size={20} strokeWidth={2.2} />
+                  </button>
+                ))}
+              </div>
+
+              {categoryModalError && <div style={styles.saveError}>{categoryModalError}</div>}
+
+              {categoryModal.mode === "edit" && (
+                <button
+                  style={styles.deleteCategoryBtn}
+                  onClick={() => {
+                    const cat = categories.find((c) => c.id === categoryModal.id);
+                    setCategoryModal(null);
+                    setConfirmDeleteCategory(cat);
+                  }}
+                >
+                  <Trash2 size={14} strokeWidth={2.2} />
+                  Удалить рубрику
+                </button>
+              )}
+            </div>
+            <div style={styles.modalFooter}>
+              <button style={styles.cancelBtn} onClick={() => setCategoryModal(null)}>
+                Отмена
+              </button>
+              <button style={styles.saveBtn} onClick={submitCategoryModal}>
+                <Check size={16} strokeWidth={2.4} />
+                {categoryModal.mode === "add" ? "Добавить" : "Сохранить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteCategory && (
+        <div style={{ ...styles.overlay, alignItems: "center" }} onClick={() => setConfirmDeleteCategory(null)}>
+          <div style={styles.confirmModal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.confirmIcon}>
+              <Trash2 size={22} strokeWidth={2.2} />
+            </div>
+            <div style={styles.confirmTitle}>Удалить рубрику «{confirmDeleteCategory.name}»?</div>
+            <div style={styles.confirmText}>
+              {itemCountByCategory.get(confirmDeleteCategory.id)
+                ? `Вместе с рубрикой будут удалены все блюда в ней (${itemCountByCategory.get(confirmDeleteCategory.id)}). `
+                : ""}
+              Официанты сразу перестанут видеть эту рубрику в меню.
+            </div>
+            <div style={styles.confirmActions}>
+              <button style={styles.cancelBtn} onClick={() => setConfirmDeleteCategory(null)}>
+                Оставить
+              </button>
+              <button style={styles.confirmDeleteBtn} onClick={() => deleteCategory(confirmDeleteCategory)}>
+                Да, удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const styles = {
+  app: {
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    background: INK,
+    color: PAPER,
+    minHeight: "100vh",
+    maxWidth: 480,
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+  },
+  header: {
+    padding: "14px 16px 12px",
+    position: "sticky",
+    top: 0,
+    background: INK,
+    zIndex: 5,
+    borderBottom: "1px solid #35312e",
+  },
+  waiterRow: { display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 10 },
+  waiterBadge: {
+    display: "flex",
+    alignItems: "center",
+    gap: 5,
+    fontSize: 12,
+    fontWeight: 600,
+    color: "#c9c4bf",
+    background: PANEL,
+    border: "1px solid #3a3532",
+    borderRadius: 20,
+    padding: "4px 10px",
+  },
+  switchWaiterBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+    fontSize: 12,
+    color: "#8a8480",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "4px 2px",
+  },
+  adminTabs: { display: "flex", flexWrap: "wrap", gap: 8 },
+  adminTab: {
+    display: "flex",
+    alignItems: "center",
+    padding: "8px 12px",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#9a938d",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  adminTabActive: { background: WINE, borderColor: WINE, color: PAPER },
+  adminBody: { flex: 1, minHeight: 0, overflowY: "auto", padding: "16px 16px 24px" },
+  iconOnlyBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 32,
+    height: 32,
+    background: "transparent",
+    border: "1px solid #3a3532",
+    borderRadius: 8,
+    color: "#c9c4bf",
+    cursor: "pointer",
+  },
+  saveErrorBanner: {
+    background: "rgba(179,86,79,0.14)",
+    border: "1px solid #b3564f",
+    color: "#e07a72",
+    borderRadius: 8,
+    padding: "8px 10px",
+    fontSize: 12.5,
+    marginBottom: 12,
+  },
+  empty: { color: "#8a8480", fontSize: 13.5, textAlign: "center", padding: "20px 0" },
+  modalList: { display: "flex", flexDirection: "column" },
+  orderRow: { display: "flex", alignItems: "center", gap: 8, padding: "10px 0", borderBottom: "1px solid #322e2b" },
+  orderRowMain: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 3,
+    background: "none",
+    border: "none",
+    color: PAPER,
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  orderTable: { fontSize: 13.5, fontWeight: 600 },
+  orderMeta: { fontSize: 11.5, color: "#8a8480" },
+  eyeBtn: { background: "none", border: "none", color: "#8a8480", cursor: "pointer", display: "flex", flexShrink: 0 },
+  kitchenCols: { display: "flex", flexDirection: "column", gap: 22 },
+  kitchenCol: { display: "flex", flexDirection: "column", gap: 8 },
+  kitchenColTitle: { display: "flex", alignItems: "center", gap: 7, fontSize: 14, fontWeight: 700, color: PAPER, marginBottom: 2 },
+  kitchenRow: { display: "flex", alignItems: "baseline", gap: 8, borderBottom: "1px solid #35312e", paddingBottom: 8, fontSize: 13.5 },
+  kitchenRowName: { flex: 1, color: PAPER, fontWeight: 600 },
+  kitchenRowQty: { color: GOLD, fontWeight: 700 },
+  kitchenRowTables: { color: "#8a8480", fontSize: 12, flexShrink: 0 },
+  statCards: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 },
+  statCard: { background: PANEL, border: "1px solid #3a3532", borderRadius: 12, padding: "14px 12px", textAlign: "center" },
+  statValue: { fontSize: 20, fontWeight: 700, color: GOLD, marginBottom: 4 },
+  statLabel: { fontSize: 11.5, color: "#9a938d" },
+  statSectionTitle: { fontSize: 14, fontWeight: 700, color: PAPER, margin: "4px 0 10px" },
+  statRow: { display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid #35312e", paddingBottom: 9, fontSize: 13.5 },
+  statRowRank: { width: 18, color: "#8a8480", fontWeight: 700 },
+  statRowName: { flex: 1, color: PAPER, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  statRowValue: { color: GOLD, fontWeight: 600, flexShrink: 0 },
+  searchRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    background: PANEL,
+    border: "1px solid #3a3532",
+    borderRadius: 10,
+    padding: "9px 12px",
+    marginBottom: 12,
+  },
+  searchInput: { flex: 1, background: "transparent", border: "none", outline: "none", color: PAPER, fontSize: 14.5 },
+  searchClear: { background: "none", border: "none", color: "#8a8480", cursor: "pointer", padding: 2, display: "flex" },
+  stopRow: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, borderBottom: "1px solid #35312e", paddingBottom: 10, paddingTop: 10 },
+  stopRowInfo: { display: "flex", alignItems: "center", gap: 7, flex: 1, minWidth: 0 },
+  stopRowName: { fontSize: 14, color: PAPER, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  stopRowPrice: { fontSize: 12.5, color: "#8a8480", flexShrink: 0 },
+  stopToggleBtn: {
+    flexShrink: 0,
+    padding: "8px 12px",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#9a938d",
+    fontSize: 12.5,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  stopToggleBtnActive: { background: "#b3564f", borderColor: "#b3564f", color: PAPER },
+  menuLockBox: { textAlign: "center", padding: "20px 10px" },
+  menuLockIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: "50%",
+    background: "rgba(201,152,46,0.15)",
+    color: GOLD,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 14px",
+  },
+  menuLockTitle: { fontSize: 15.5, fontWeight: 700, color: PAPER, marginBottom: 10 },
+  menuLockWarning: { fontSize: 12.5, color: "#9a938d", lineHeight: 1.5, marginBottom: 18, textAlign: "left" },
+  menuPinInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: INK,
+    border: "1px solid #3a3532",
+    borderRadius: 10,
+    padding: "12px",
+    color: PAPER,
+    fontSize: 20,
+    letterSpacing: "0.3em",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  menuPinError: { color: "#e07a72", fontSize: 12.5, marginTop: -4, marginBottom: 10 },
+  menuUnlockBtn: { width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: WINE, color: PAPER, fontSize: 14, fontWeight: 700, cursor: "pointer" },
+  fullEditorBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    background: "none",
+    border: "1px dashed #3a3532",
+    borderRadius: 8,
+    padding: "9px 10px",
+    color: "#9a938d",
+    fontSize: 12.5,
+    cursor: "pointer",
+    width: "100%",
+    marginBottom: 14,
+  },
+  sectionTitle: { fontSize: 13, fontWeight: 700, color: PAPER, margin: "0 0 8px" },
+  rubricRow: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 },
+  rubricChipWrap: { display: "flex", alignItems: "center", gap: 3 },
+  rubricChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "7px 10px 7px 12px",
+    borderRadius: "20px 0 0 20px",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    borderRightWidth: 0,
+    background: "transparent",
+    color: "#c9c4bf",
+    fontSize: 13,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  rubricCount: {
+    fontSize: 10.5,
+    fontWeight: 700,
+    color: "#8a8480",
+    background: "rgba(255,255,255,0.06)",
+    borderRadius: 10,
+    padding: "1px 6px",
+  },
+  rubricEditBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 30,
+    height: 30,
+    borderRadius: "0 20px 20px 0",
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#8a8480",
+    cursor: "pointer",
+    flexShrink: 0,
+  },
+  rubricAddChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "7px 12px",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#9a938d",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  iconPicker: { display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 },
+  iconOption: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    aspectRatio: "1 / 1",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#c9c4bf",
+    cursor: "pointer",
+  },
+  iconOptionActive: { background: WINE, borderColor: WINE, color: PAPER },
+  deleteCategoryBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    width: "100%",
+    marginTop: 18,
+    padding: "10px 0",
+    borderRadius: 10,
+    border: "1px solid #b3564f",
+    background: "none",
+    color: "#e07a72",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  confirmModal: {
+    width: "100%",
+    maxWidth: 380,
+    background: PANEL,
+    borderRadius: 18,
+    padding: "26px 22px 22px",
+    margin: "0 16px",
+    textAlign: "center",
+  },
+  confirmIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: "50%",
+    background: "rgba(179,86,79,0.15)",
+    color: "#e07a72",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    margin: "0 auto 14px",
+  },
+  confirmTitle: { fontSize: 16.5, fontWeight: 700, color: PAPER, marginBottom: 8 },
+  confirmText: { fontSize: 13.5, color: "#9a938d", lineHeight: 1.4, marginBottom: 20 },
+  confirmActions: { display: "flex", gap: 10 },
+  confirmDeleteBtn: {
+    flex: 1,
+    padding: "13px 0",
+    borderRadius: 10,
+    border: "none",
+    background: "#b3564f",
+    color: PAPER,
+    fontSize: 14.5,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10 },
+  card: {
+    background: PANEL,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    borderRadius: 12,
+    padding: "10px 12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  cardStopped: { opacity: 0.55, borderColor: "#b3564f" },
+  cardName: { fontSize: 13.5, fontWeight: 600, color: PAPER, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  stopBadge: { fontSize: 9, fontWeight: 700, color: "#e07a72", background: "rgba(224,122,114,0.15)", borderRadius: 6, padding: "1px 5px" },
+  cardPrice: { fontSize: 13, color: GOLD, fontWeight: 700 },
+  cardActions: { display: "flex", gap: 4, marginTop: 2 },
+  actionIconBtn: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 28,
+    height: 28,
+    background: "#1B1918",
+    border: "1px solid #3a3532",
+    borderRadius: 7,
+    color: "#c9c4bf",
+    cursor: "pointer",
+  },
+  addCard: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    minHeight: 88,
+    background: "none",
+    border: "1px dashed #3a3532",
+    borderRadius: 12,
+    color: "#9a938d",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 30 },
+  modal: { width: "100%", maxWidth: 480, background: PANEL, borderRadius: "18px 18px 0 0", maxHeight: "82vh", display: "flex", flexDirection: "column" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 18px", borderBottom: "1px solid #3a3532" },
+  modalTitle: { fontSize: 15, fontWeight: 700, color: PAPER },
+  modalBody: { padding: "12px 18px 20px", overflowY: "auto", flex: 1 },
+  modalFooter: { display: "flex", gap: 10, padding: "14px 18px", borderTop: "1px solid #3a3532" },
+  fieldLabel: { display: "block", fontSize: 12, color: "#9a938d", marginBottom: 6, marginTop: 14 },
+  fieldInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: INK,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    borderRadius: 10,
+    padding: "12px 14px",
+    color: PAPER,
+    fontSize: 16,
+  },
+  priceInputWrap: { position: "relative" },
+  priceInput: {
+    width: "100%",
+    boxSizing: "border-box",
+    background: INK,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    borderRadius: 10,
+    padding: "12px 34px 12px 14px",
+    color: PAPER,
+    fontSize: 16,
+  },
+  priceSuffix: {
+    position: "absolute",
+    right: 14,
+    top: "50%",
+    transform: "translateY(-50%)",
+    color: "#8a8480",
+    fontSize: 14,
+    pointerEvents: "none",
+  },
+  categoryPicker: { display: "flex", flexWrap: "wrap", gap: 8 },
+  categoryPill: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "9px 14px",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderStyle: "solid",
+    borderColor: "#3a3532",
+    background: "transparent",
+    color: "#c9c4bf",
+    fontSize: 13.5,
+    fontWeight: 600,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  },
+  categoryPillActive: { background: WINE, borderColor: WINE, color: PAPER },
+  saveError: {
+    marginTop: 14,
+    color: "#e07a72",
+    fontSize: 13,
+    background: "rgba(224,122,114,0.1)",
+    border: "1px solid #b3564f",
+    borderRadius: 8,
+    padding: "8px 10px",
+  },
+  cancelBtn: {
+    flex: 1,
+    padding: "12px 0",
+    borderRadius: 10,
+    border: "1px solid #3a3532",
+    background: "transparent",
+    color: PAPER,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  saveBtn: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    padding: "12px 0",
+    borderRadius: 10,
+    border: "none",
+    background: WINE,
+    color: PAPER,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+};
